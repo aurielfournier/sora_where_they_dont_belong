@@ -20,9 +20,17 @@ vertnet <- read.csv("vertnet.csv", stringsAsFactors = FALSE) %>%
                    year = as.integer(year),
                    from="vertnetFILE")
 
+
 colnames(vertnet) <- colnames(tring)
 
-gbif <- read.csv("gbif.csv", stringsAsFactors = FALSE) %>%
+ebird <- read.csv("summer_notNA_ebird.csv", stringsAsFactors = FALSE) %>%
+          mutate(institutioncode="FROMEBIRD") %>% 
+          select(COUNTRY, Month, Day, Year, AGE.SEX, institutioncode, SCIENTIFIC.NAME, ï..GLOBAL.UNIQUE.IDENTIFIER ) %>%
+          mutate(from="ebirdFILE")
+
+colnames(ebird) <- colnames(tring)
+
+gbif <- read.csv("summernotUSCA_gbif.csv", stringsAsFactors = FALSE) %>%
             mutate(sex = NA)  %>%
             select(countryCode, month, day, year,sex, institutionCode, scientificName,occurrenceID) %>%
             mutate(from="gbifFILE")
@@ -31,7 +39,7 @@ colnames(gbif) <- colnames(tring)
 
 # still waiting on ebird data 
 
-masterdat <- bind_rows(tring, fieldmuseum, vertnet, gbif)
+masterdat <- bind_rows(tring, fieldmuseum, vertnet, gbif, ebird)
 
 
 northamerica <- c("USA","Canada","United States","United States of America","US","CA","UNITED STATES","")
@@ -98,9 +106,12 @@ ggplot()+
             xlim=c(-120,-60),ylim=c(-20,40))
 
 
+write.csv(mastersummer, file="mastersummer.csv", row.names = FALSE)
 
-closora <- read.csv("vertnet.csv", stringsAsFactors = FALSE) %>%
-              filter(institutioncode=="CLO",
-                     month=="6"|month=="7",
-                     countrycode!="US",
-                     countrycode!="CA")
+#go through and check ebird vs gbif by hand for duplicates
+
+
+dat <- read.csv("mastersummer.csv") %>%
+  filter(cut!="X")
+
+write.csv(dat, file=paste0(Sys.Date(),"_master_checked_for_ebird_dups.csv"), row.names = FALSE)
