@@ -1,6 +1,6 @@
 library(tidyverse)
 library(lubridate)
-
+library(rel)
 tring <- read.csv("20170704_sora_from_tring.csv", stringsAsFactors = FALSE) %>%
                 select(location, month, day, year, sex, museum, species, assecion_number) %>%
                 mutate(from="tringFILE")
@@ -25,8 +25,9 @@ colnames(vertnet) <- colnames(tring)
 
 ebird <- read.csv("summer_notNA_ebird.csv", stringsAsFactors = FALSE) %>%
           mutate(institutioncode="FROMEBIRD") %>% 
-          select(COUNTRY, Month, Day, Year, AGE.SEX, institutioncode, SCIENTIFIC.NAME, ï..GLOBAL.UNIQUE.IDENTIFIER ) %>%
-          mutate(from="ebirdFILE")
+          select(COUNTRY, Month, Day, Year, AGE.SEX, institutioncode, SCIENTIFIC.NAME, ?..GLOBAL.UNIQUE.IDENTIFIER ) %>%
+          mutate(anumber = NA,
+                 from="ebirdFILE")
 
 colnames(ebird) <- colnames(tring)
 
@@ -37,16 +38,17 @@ gbif <- read.csv("summernotUSCA_gbif.csv", stringsAsFactors = FALSE) %>%
           
 colnames(gbif) <- colnames(tring)
 
-# still waiting on ebird data 
+
 
 masterdat <- bind_rows(tring, fieldmuseum, vertnet, gbif, ebird)
 
 
 northamerica <- c("USA","Canada","United States","United States of America","US","CA","UNITED STATES","")
 
+droplocations <- c("No data","? Unknown","Locality Unknown","unknown")
+
 mastersummer <- masterdat %>% 
-                  filter(month>=6&month<=7,
-                         !(location %in% northamerica)) %>%
+                  filter(!(location %in% northamerica)) %>%
                   mutate(location = ifelse(location=="AW","Aruba",location),
                          location = ifelse(location=="BM","Bermuda",location),
                          location = ifelse(location=="BS","Bahamas",location),
@@ -60,58 +62,123 @@ mastersummer <- masterdat %>%
                          location = ifelse(location=="PR","Puerto Rico",location),
                          location = ifelse(location=="SE",'Sweden',location),
                          location = ifelse(location=="VI","Virgin Islands",location),
-                         location = ifelse(location=="British West Indies","Cayman Islands",location)) %>%
-                  filter(location!="Sweden",
-                         location!="Norway",
-                         location!="Philippines")
+                         location = ifelse(location=="Virgin Islands (U.S.)",
+                                                          "Virgin Islands",location),
+                         location = ifelse(location=="British West Indies",
+                                                          "Cayman Islands",location),
+                         location = ifelse(location=="[Venezuela]",
+                                                          "Venezuela",location),
+                         location = ifelse(location=="TURKS AND CAICOS ISLANDS",
+                                                "Turks and Caicos Islands", location),
+                         location = ifelse(location=="Bartica Guyana",
+                                                        "Guyana",location),
+                         location = ifelse(location=="Carayacas Ecuador",
+                                           "Ecuador",location),
+                         location = ifelse(location=="Chapuleo Mexico",
+                                           "Mexico",location),
+                         location = ifelse(location=="Cozumela Island Mexico",
+                                           "Mexico",location),
+                         location = ifelse(location == "Cuban Virapaz Guatemala",
+                                           "Guatemala",location),
+                         location = ifelse(location == "Duenas Guatemala",
+                                           "Guatemala",location),
+                         location = ifelse(location=="Medellin Columbia",
+                                           "Columbia",location),
+                         location = ifelse(location=="Merida Venezuela",
+                                           "Venezuela",location),
+                         location = ifelse(location=="Narino, Columbia",
+                                           "Columbia",location),
+                         location = ifelse(location=="Nuestro Ano Costa Rica",
+                                           "Costa Rica",location),
+                         location = ifelse(location=="Progresso Mexico",
+                                           "Mexico",location),
+                         location = ifelse(location=="San Lucas Ecuador",
+                                           "Ecuador",location),
+                         location = ifelse(location=="Santa Elena Ecuador",
+                                           "Ecuador",location),
+                         location = ifelse(location=="Quinto Ecuador",
+                                           "Ecuador",location),
+                         location = ifelse(location=="Sion Hill Panama",
+                                           "Panama",location)) %>%
+        filter(!(location %in% droplocations))
 
-ggplot(data=mastersummer, aes(x=month))+
-  geom_histogram()
+
+# When there is new data: 
+#write.csv(mastersummer, file="master_vagrants.csv", row.names = FALSE)
+
+#go through and check ebird vs gbif by hand for duplicates
+
+dat <- read.csv("master_vagrants.csv") %>%
+  filter(cut!="X") 
+
+# cut out wintering birds in central/south america/carribean
+
+keep_for_winter <- c("Norway","Sweden","Philippines")
+
+dat_reduced <- dat %>% 
+          mutate(location = as.character(location),
+                 location = ifelse(location=="Timpas Mexico","Mexico",location),
+                 location = ifelse(location=="Valley of Mexico","Mexico",location)) %>%
+          filter(!is.na(month)) %>%
+          mutate(cut_place = ifelse(location %in% keep_for_winter, "outsideW","check"))
 
 
-ggplot(data=mastersummer, aes(x=location))+
+dat_reduced$cut <- NA
+
+outsideW <- dat_reduced[dat_reduced$cut_place=="outsideW",]
+check <- dat_reduced[dat_reduced$cut_place=="check",]
+
+checked <- check %>%
+            mutate(cut = ifelse(month<=4|month>=9, "cut","donotcut")) %>%
+            filter(cut=="donotcut")
+
+
+dat_combined <- rbind(outsideW, checked) %>% select(-cut, -cut_place)
+
+write.csv(dat_combined, file=paste0(Sys.Date(),"_master_checked_for_ebird_dups.csv"), row.names = FALSE)
+
+
+table(dat_combined$month, dat_combined$location)
+
+
+a <- ggplot(data=dat_combined, aes(x=month))+
+  geom_histogram()+
+  theme_fournier()
+
+b <- ggplot(data=dat_combined, aes(x=location))+
   geom_bar()+
   facet_wrap(~month, ncol=1)+
-  theme_bw()
-  
+  theme_fournier()+
+  xlab("Locations")+
+  ylab("Count")
 
-table(mastersummer$month, mastersummer$location)
+ggsave(a, file="month_bar_chart.jpeg", width=10, height=10, units="cm", dpi=300)
 
+ggsave(b, file="location_month_bar_chart.jpeg", width=30, height=10, units="cm",dpi=300)
 
 world <- map_data("world")
-WestHem <- c("USA","Canada","Mexico","Brazil","Panama","Columbia",
-             "Cuba","Nicaragua","Guatemala","Belize","Costa Rica",
-             'El Salvador',"Honduras","Colombia","Ecuador","Venezuela",
-             "Guyana","Suriname","Peru","Bolivia","Puerto Rico","Haiti",
-             "Jamaica","Bahamas","French Guiana","Dominican Republic",
-             "British Virgin Islands","Grenadines","Virgin Islands",
-             "Saint Lucia","Barbados",'Trinidad and Tobago',"Arbua",
-             "Curacao","Turks and Caicos","Montserrat","Dominica",
-             "Chile","Argentina","Paraguay")
 
 
-soracountries <- world[world$region %in% mastersummer$location,]
+soracountries <- world[world$region %in% dat$location,]
 
-westhem <- world[world$region %in% WestHem,]
 
-ggplot()+
-  geom_polygon(data=westhem, 
+soramap <- ggplot()+
+  geom_polygon(data=world, 
                aes(x=long, y=lat, group=group), 
                fill="white", col="lightgrey", size=0.2)+
   geom_polygon(data=soracountries, 
                aes(x=long, y=lat, group=group), 
-               fill="darkgrey", col="lightgrey", size=0.2)+
-  coord_map("albers",
-            lat0=0, lat1=60,
-            xlim=c(-120,-60),ylim=c(-20,40))
+               fill="darkgrey", col="black", size=0.2)+
+  theme_fournier()+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.line.x = element_blank(),
+        axis.line.y = element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.ticks.y=element_blank())
+
+ggsave(soramap, file="map_of_locations.jpeg", width=15, height=10, units="cm", dpi=300)
 
 
-write.csv(mastersummer, file="mastersummer.csv", row.names = FALSE)
-
-#go through and check ebird vs gbif by hand for duplicates
-
-
-dat <- read.csv("mastersummer.csv") %>%
-  filter(cut!="X")
-
-write.csv(dat, file=paste0(Sys.Date(),"_master_checked_for_ebird_dups.csv"), row.names = FALSE)
